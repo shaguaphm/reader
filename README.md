@@ -1,6 +1,8 @@
 # reader
 
-forked from hectorqin/reader
+
+forked from hectorqin/reader(https://github.com/hectorqin/reader)
+
 
 <details><summary>免责声明（Disclaimer）</summary>
 阅读是一款提供网络文学搜索的工具，为广大网络文学爱好者提供一种方便、快捷舒适的试读体验。
