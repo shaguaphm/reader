@@ -24,13 +24,6 @@ jobs:
           java-version: '11'
           cache: 'gradle'
       -
-        name: Build server jar
-        run: |
-          mkdir -p src/main/resources/web
-          touch src/main/resources/web/index.html
-          echo "<html><body><h3>Tauri客户端未内置静态资源</h3></body></html>" > src/main/resources/web/index.html
-          rm src/main/java/com/htmake/reader/ReaderUIApplication.kt && gradle -b cli.gradle assemble --info && mv ./build/libs/*.jar ./reader.jar
-      -
         name: Setup node
         uses: actions/setup-node@v2
         with:
@@ -39,6 +32,10 @@ jobs:
         name: Build web
         working-directory: web
         run: yarn install && yarn run build
+      -
+        name: Build server jar
+        run: |
+          rm src/main/java/com/htmake/reader/ReaderUIApplication.kt && gradle -b cli.gradle assemble --info && mv ./build/libs/*.jar ./reader.jar
       -
         name: 'Upload Artifact'
         uses: actions/upload-artifact@v3
@@ -119,6 +116,8 @@ jobs:
         uses: mikepenz/release-changelog-builder-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          commitMode: true
 
       - name: Tauri build
         uses: tauri-apps/tauri-action@0e558392ccadcb49bcc89e7df15a400e8f0c954d

@@ -12,6 +12,9 @@ pub struct ReaderConfig {
   #[serde(skip_serializing_if = "Option::is_none", rename = "serverPort")]
   pub server_port: Option<u64>,
 
+  #[serde(skip_serializing_if = "Option::is_none", rename = "windowUrl")]
+  pub window_url: Option<String>,
+
   /// enable debug mode
   #[serde(skip_serializing_if = "Option::is_none")]
   pub debug: Option<bool>,
@@ -76,6 +79,9 @@ impl ReaderConfig {
     }
     if patch.server_port.is_some() {
       self.server_port = patch.server_port;
+    }
+    if patch.window_url.is_some() {
+      self.window_url = patch.window_url;
     }
     if patch.debug.is_some() {
       self.debug = patch.debug;

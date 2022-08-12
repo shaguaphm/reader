@@ -1,20 +1,11 @@
 use crate::log_if_err;
-use crate::utils::dirs;
 use crate::utils::init;
-use crate::utils::help;
+use crate::utils::reader;
 use crate::utils::reader_config::*;
-
-use anyhow::{bail, Result};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::thread::sleep;
-use std::time::Duration;
-use tauri::api::process::{Command, CommandEvent};
 use tauri::{App, Manager};
 use tauri::utils::config::AppUrl;
-
-static READER_SERVER_STARTED: AtomicBool = AtomicBool::new(false);
-static READER_SERVER_FAILED: AtomicBool = AtomicBool::new(false);
+use url::Url;
 
 /// handle something when start app
 pub fn resolve_setup(app: &App) {
@@ -31,16 +22,26 @@ pub fn resolve_setup(app: &App) {
   create_main_window(app, &reader_config);
 
   // start reader server
-  start_server(app, &reader_config);
+  // start_server_with_config(app, &reader_config);
 }
 
 fn create_main_window(app: &App, config: &ReaderConfig) {
   let reader_config = Arc::new(Mutex::new(config.clone()));
   let app_handle = app.app_handle();
 
-  let server_port = get_server_port(&config);
+  let server_port = reader::get_server_port(&config);
 
-  let api = format!("//localhost:{}/reader3", server_port);
+  let debug_web = if let Some(_debug_web) = config.debug {
+    if _debug_web {
+      "1"
+    } else {
+      ""
+    }
+  } else {
+    ""
+  };
+
+  let api = format!("http://localhost:{}/reader3", server_port);
   let default_window_url = tauri::WindowUrl::App(format!("index.html?api={}", api).into());
   #[allow(unused_assignments)]
   let mut window_url = default_window_url.clone();
@@ -52,17 +53,33 @@ fn create_main_window(app: &App, config: &ReaderConfig) {
 
     window_url = match index_url {
       AppUrl::Url(dev_window_url) => match dev_window_url {
-        tauri::WindowUrl::App(path) => tauri::WindowUrl::App(format!("{}?api={}", path.into_os_string().into_string().unwrap(), api).into()),
+        tauri::WindowUrl::App(path) => tauri::WindowUrl::App(format!("{}?api={}&debug={}", path.into_os_string().into_string().unwrap(), api, debug_web).into()),
         tauri::WindowUrl::External(url) => {
           let mut new_url = url.clone();
           new_url.query_pairs_mut()
-            .append_pair("api", &api);
+            .append_pair("api", &api)
+            .append_pair("debug", debug_web);
           tauri::WindowUrl::External(new_url)
         },
         _ => default_window_url.clone()
       },
       _ => default_window_url.clone()
     };
+  }
+
+  if let Some(window_url_config) = &config.window_url{
+    if !window_url_config.is_empty() {
+      if window_url_config.starts_with("http://") || window_url_config.starts_with("https://") {
+        match Url::parse_with_params(window_url_config, &[("api", api), ("debug", debug_web.to_string())]) {
+          Ok(url) => {
+            window_url = tauri::WindowUrl::External(url);
+          }
+          Err(err) => {
+            log::info!("config.window_url {} error {}", window_url_config, err);
+          }
+        }
+      }
+    }
   }
 
   log::info!("window_url {}", window_url);
@@ -94,6 +111,8 @@ fn create_main_window(app: &App, config: &ReaderConfig) {
         log::info!("set position to ({}, {})", position_x, position_y);
         builder = builder.position(position_x, position_y);
       }
+    } else {
+      builder = builder.center();
     }
   }
 
@@ -148,7 +167,7 @@ fn create_main_window(app: &App, config: &ReaderConfig) {
   log::info!("main window created");
 }
 
-/// create main window
+// create main window
 // pub fn create_window(app_handle: &AppHandle, name: &str, title: &str, url: tauri::WindowUrl) {
 //   if let Some(window) = app_handle.get_window(name) {
 //     let _ = window.unminimize();
@@ -207,216 +226,3 @@ fn create_main_window(app: &App, config: &ReaderConfig) {
 //     // .inner_size(800.0, 636.0)
 //     .build());
 // }
-
-fn start_server(app: &App, reader_config: &ReaderConfig) {
-  let mut java_path = String::from("");
-  if let Some(java_path_config) = &reader_config.java_path {
-    java_path = java_path_config.clone();
-    if let Err(err) = check_java_version(java_path.clone()) {
-      log::error!("check java {}", err);
-      java_path = String::from("");
-    }
-  }
-  if java_path.is_empty() {
-    if let Ok(java) = check_installed_java() {
-      java_path = java;
-    }
-  }
-
-  if java_path.is_empty() {
-  // if !java_path.is_empty() {
-    if let Some(window) = &app.get_window("main") {
-      log::info!("打开设置页面");
-      log_if_err!(window.eval("function gotoSettingPage(){var url = window.location.origin + window.location.pathname + window.location.search + window.location.hash.replace(/^[^?]*\\??/, '#/setting?');console.log('gotoSettingPage', url);window.location.assign(url);}window.addEventListener('DOMContentLoaded', gotoSettingPage);window.addEventListener('load', gotoSettingPage);if(window.location.search){gotoSettingPage()}"));
-    } else {
-      log::error!("找不到主窗口...");
-      return;
-    }
-  } else {
-    // 启动 jar
-    if let Err(err) = launch_server(app, java_path, reader_config) {
-      log::info!("启动 reader 接口服务失败! {}", err);
-      return;
-    }
-    log::info!("打开主窗口");
-  }
-}
-
-pub fn check_installed_java() -> Result<String> {
-  if let Ok(java) = which::which("java") {
-    log::info!("java path {}", java.display());
-    let java_path = java.into_os_string().into_string().unwrap();
-    return match check_java_version(java_path.clone()) {
-      Ok(()) => Ok(java_path),
-      Err(err) => Err(err)
-    };
-  }
-  bail!(format!("请安装 Java8 以上环境!"));
-}
-
-pub fn check_java_version(java_path: String) -> Result<()> {
-  // let output = if cfg!(target_os = "windows") {
-  //   Command::new(java.into_os_string().into_string().unwrap())
-  //     .args(["-version"])
-  //     .output()
-  //     .expect("failed to execute process")
-  // } else {
-  //   Command::new(java.into_os_string().into_string().unwrap())
-  //     .args(["-version"])
-  //     .output()
-  //     .expect("failed to execute process")
-  // };
-  let output =
-    Command::new(java_path)
-      .args(["-version"])
-      .output();
-  if let Err(err) = output {
-    bail!(format!("请检查 java 路径 {}", err))
-  }
-  let output = output.unwrap();
-  log::info!("output {:?}", output);
-  if output.status.success() {
-    log::info!("stderr {}", output.stderr);
-    let result = output
-      .stderr
-      .split('\n')
-      .collect::<Vec<_>>()
-      .get(0)
-      .unwrap()
-      .split(' ')
-      .collect::<Vec<_>>();
-    // log::info!("result {:?}", result);
-
-    let result2 = result.get(2).unwrap().split('.').collect::<Vec<_>>();
-    let main_ver = result2
-      .get(0)
-      .unwrap()
-      .replace("\"", "")
-      .parse::<i32>()
-      .unwrap();
-    let sub_ver = result2
-      .get(1)
-      .unwrap()
-      .replace("\"", "")
-      .parse::<i32>()
-      .unwrap();
-    log::info!("{}", format!("main_ver: {main_ver} sub_ver: {sub_ver}"));
-    if main_ver == 1 && sub_ver < 8 {
-      bail!(format!("java 版本不能低于 8"))
-    }
-  } else {
-    bail!(format!("获取 java 版本号失败，请检查 java 命令!"))
-  }
-
-  return Ok(());
-}
-
-fn launch_server(app: &App, java_path: String, reader_config: &ReaderConfig) -> Result<()> {
-  let jar_path = dirs::reader_jar_path()
-      .display().to_string();
-  log::info!("jar path {}", jar_path);
-
-  let args = prepare_args(jar_path, reader_config);
-
-  tauri::async_runtime::spawn(async move {
-    let (mut rx, _child) = Command::new(java_path)
-      .args(args)
-      .current_dir(dirs::app_home_dir())
-      .spawn()
-      .expect("Failed to spawn reader server");
-    while let Some(event) = rx.recv().await {
-      match event {
-        CommandEvent::Stdout(line) | CommandEvent::Stderr(line) => {
-          log::info!("[SERVER] {}", line);
-          if let Some(_index) = line.find("Started ReaderApplication") {
-            log::info!(
-              "find Started ReaderApplication {} set result {}",
-              _index,
-              READER_SERVER_STARTED.fetch_or(true, Ordering::Relaxed)
-            );
-          }
-        }
-        CommandEvent::Terminated(payload) => {
-          log::info!("Reader server exit with code {}", payload.code.unwrap_or_default());
-          READER_SERVER_FAILED.fetch_or(true, Ordering::Relaxed);
-          break;
-        }
-        CommandEvent::Error(error) => {
-          log::error!("Reader server error {}", error);
-        }
-        _ => {}
-      }
-    }
-  });
-  wait_for_server_ready(app);
-  return Ok(());
-}
-
-fn get_server_port(reader_config: &ReaderConfig) -> u64 {
-  let mut server_port = 8080;
-  if let Some(_server_port) = reader_config.server_port {
-    server_port = _server_port;
-  }
-  return server_port;
-}
-
-fn prepare_args(jar_path: String, reader_config: &ReaderConfig) -> Vec<String> {
-  let mut args = Vec::new();
-  args.push(String::from("-jar"));
-  args.push(jar_path);
-
-  if let Some(server_config) = &reader_config.server_config {
-    for item in server_config.iter() {
-      if item.0.as_str() == Some("reader.app.workDir") {
-        log::warn!("无效设置 reader.server.workDir");
-        continue;
-      }
-      if item.0.as_str() == Some("reader.server.port") {
-        log::warn!("请使用 serverPort 设置监听端口，reader.server.port 无效");
-        continue;
-      }
-
-      if let Some(name) = item.0.as_str() {
-        if item.1.is_bool() {
-          args.push(format!("--{}={}", name, item.1.as_bool().unwrap()));
-        } else if item.1.is_string() {
-          let value = item.1.as_str().unwrap();
-          if !value.is_empty() {
-            args.push(format!("--{}={}", name, value));
-          }
-        } else if item.1.is_u64() {
-          args.push(format!("--{}={}", name, item.1.as_u64().unwrap()));
-        }
-      }
-    }
-  }
-
-  let server_port = get_server_port(&reader_config);
-
-  if server_port > 0 {
-    args.push(format!("--reader.server.port={}", server_port));
-  }
-
-  args.push(format!("--reader.app.workDir={}", dirs::app_home_dir().into_os_string().into_string().unwrap()));
-  return args;
-}
-
-fn wait_for_server_ready(app: &App) {
-  let start_time = help::get_now();
-  loop {
-    // log::info!(
-    //   "READER_SERVER_STARTED {}",
-    //   READER_SERVER_STARTED.load(Ordering::Relaxed)
-    // );
-    if READER_SERVER_FAILED.load(Ordering::Relaxed) || help::get_now() > start_time + 30 {
-      log::info!(
-        "reader server launch failed!!"
-      );
-      app.app_handle().exit(1);
-    }
-    if READER_SERVER_STARTED.load(Ordering::Relaxed) {
-      break;
-    }
-    sleep(Duration::from_millis(300));
-  }
-}

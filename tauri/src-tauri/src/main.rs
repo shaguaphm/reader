@@ -42,7 +42,7 @@ fn prepare_menu() -> Menu {
     ),
   )));
 
-  println!("{:?}", menu_items);
+  // println!("{:?}", menu_items);
   menu = Menu::with_items(menu_items);
   return menu;
 }
@@ -95,6 +95,11 @@ fn main() {
       cmds::get_config,
       cmds::save_config,
       cmds::check_java,
+      cmds::get_server_port,
+      cmds::start_server,
+      cmds::stop_server,
+      cmds::restart_server,
+      cmds::is_server_running,
     ])
     .build(tauri::generate_context!())
     .expect("error while building tauri application");

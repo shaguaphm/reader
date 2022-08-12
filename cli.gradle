@@ -34,16 +34,18 @@ configurations {
     }
 }
 
+ext["netty.version"] = "4.1.42.Final"
+
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
     // vertx
-    implementation "io.vertx:vertx-core:3.8.1"
-    implementation "io.vertx:vertx-lang-kotlin:3.8.1"
-    implementation "io.vertx:vertx-lang-kotlin-coroutines:3.8.1"
-    implementation 'io.vertx:vertx-web:3.8.1'
-    implementation 'io.vertx:vertx-web-client:3.8.1'
+    implementation "io.vertx:vertx-core:3.8.5"
+    implementation "io.vertx:vertx-lang-kotlin:3.8.5"
+    implementation "io.vertx:vertx-lang-kotlin-coroutines:3.8.5"
+    implementation 'io.vertx:vertx-web:3.8.5'
+    implementation 'io.vertx:vertx-web-client:3.8.5'
 
     // json
     implementation "com.google.code.gson:gson:2.8.5"

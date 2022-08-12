@@ -324,7 +324,7 @@ export default {
       //
     }
   },
-  created() {
+  async created() {
     if (this.$route && this.$route.query && this.$route.query.api) {
       this.$store.commit("setApi", this.$route.query.api);
     }
@@ -335,6 +335,7 @@ export default {
       });
     this.autoSetTheme(this.autoTheme);
 
+    await this.tauriInit().catch(() => {});
     this.getUserInfo().then(() => {
       this.$store.dispatch("syncFromLocalStorage");
       this.init();
@@ -487,6 +488,48 @@ export default {
     }
   },
   methods: {
+    async tauriInit() {
+      // console.log("tauriInit");
+      if (window.__TAURI__ && window.__TAURI__.invoke) {
+        let is_server_running = await window.__TAURI__
+          .invoke("is_server_running")
+          .catch(() => false);
+        // console.log("is_server_running", is_server_running);
+        let setServerApi = async () => {
+          const serverPort = await window.__TAURI__
+            .invoke("get_server_port")
+            .catch(() => false);
+          // console.log("serverPort", serverPort);
+
+          if (serverPort) {
+            this.$store.commit(
+              "setApi",
+              `http://localhost:${serverPort}/reader3/`
+            );
+          }
+        };
+        if (!is_server_running) {
+          const loading = this.$loading({
+            lock: true,
+            text: "正在启动服务...",
+            spinner: "el-icon-loading",
+            background: "rgba(0, 0, 0, 0.7)"
+          });
+          await window.__TAURI__
+            .invoke("start_server")
+            .catch(err => {
+              this.$message.error(err);
+              this.$nextTick(() => {
+                this.$router.push("/setting");
+              });
+            })
+            .then(setServerApi);
+          loading.close();
+        } else {
+          await setServerApi();
+        }
+      }
+    },
     autoSetTheme(autoTheme) {
       if (autoTheme) {
         if (window.matchMedia("(prefers-color-scheme: dark)").matches) {

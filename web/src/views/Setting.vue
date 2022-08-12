@@ -74,6 +74,19 @@
           <el-form-item label="纵坐标">
             <el-input v-model="windowConfigForm.positionY"></el-input>
           </el-form-item>
+          <el-form-item label="页面链接">
+            <el-input v-model="windowConfigForm.windowUrl"></el-input>
+          </el-form-item>
+          <el-form-item label="调试页面">
+            <el-switch
+              v-model="windowConfigForm.debug"
+              active-color="#13ce66"
+              inactive-color="#ff4949"
+              :active-value="true"
+              :inactive-value="false"
+            >
+            </el-switch>
+          </el-form-item>
           <el-form-item label="其他配置">
             <el-checkbox v-model="windowConfigForm.rememberSize"
               >记住窗口大小</el-checkbox

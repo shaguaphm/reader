@@ -75,7 +75,7 @@ pub fn init_app(package_info: &PackageInfo) {
   let log_dir = dirs::app_logs_dir();
   let storage_dir = dirs::app_storage_dir();
 
-  let res_dir = dirs::app_resources_dir(package_info);
+  let _res_dir = dirs::app_resources_dir(package_info);
 
   if !app_dir.exists() {
     fs::create_dir_all(&app_dir).unwrap();
@@ -92,13 +92,13 @@ pub fn init_app(package_info: &PackageInfo) {
     log::error!(target: "app", "{err}");
   }
 
-  log::info!("res_dir: {} {} {} {} {}",
-    res_dir.as_os_str().to_str().unwrap().to_string(),
-    res_dir.clone().into_os_string().into_string().unwrap(),
-    res_dir.display(),
-    res_dir.display().to_string(),
-    res_dir.as_os_str().to_string_lossy().to_string()
-  );
+  // log::info!("res_dir: {} {} {} {} {}",
+  //   res_dir.as_os_str().to_str().unwrap().to_string(),
+  //   res_dir.clone().into_os_string().into_string().unwrap(),
+  //   res_dir.display(),
+  //   res_dir.display().to_string(),
+  //   res_dir.as_os_str().to_string_lossy().to_string()
+  // );
 
   // copy the resource file
   // let jar_path = dirs::reader_jar_path();
