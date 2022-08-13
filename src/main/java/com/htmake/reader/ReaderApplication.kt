@@ -15,13 +15,15 @@ import com.htmake.reader.verticle.RestVerticle
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.SpringApplication
 import org.springframework.boot.autoconfigure.SpringBootApplication
+import org.springframework.boot.autoconfigure.data.mongo.MongoDataAutoConfiguration;
+import org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.context.annotation.Bean
 import javax.annotation.PostConstruct
 
 private val logger = KotlinLogging.logger {}
 
-@SpringBootApplication
+@SpringBootApplication(exclude = arrayOf(MongoAutoConfiguration::class,MongoDataAutoConfiguration::class))
 @EnableScheduling
 class ReaderApplication {
 
@@ -67,6 +69,7 @@ class ReaderApplication {
 }
 
 fun main(args: Array<String>) {
+    logger.info("Starting application with args: {}", args)
     SpringApplication.run(ReaderApplication::class.java, *args)
 }
 

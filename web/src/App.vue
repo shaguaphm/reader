@@ -139,7 +139,8 @@ import "./assets/fonts/iconfont.css";
 import {
   cacheFirstRequest,
   isMiniInterface,
-  networkFirstRequest
+  networkFirstRequest,
+  staleWhileRevalidateRequest
 } from "./plugins/helper";
 
 Date.prototype.format = function(fmt) {
@@ -323,7 +324,10 @@ export default {
       //
     }
   },
-  created() {
+  async created() {
+    if (this.$route && this.$route.query && this.$route.query.api) {
+      this.$store.commit("setApi", this.$route.query.api);
+    }
     window
       .matchMedia("(prefers-color-scheme: dark)")
       .addEventListener("change", () => {
@@ -331,6 +335,7 @@ export default {
       });
     this.autoSetTheme(this.autoTheme);
 
+    await this.tauriInit().catch(() => {});
     this.getUserInfo().then(() => {
       this.$store.dispatch("syncFromLocalStorage");
       this.init();
@@ -483,6 +488,48 @@ export default {
     }
   },
   methods: {
+    async tauriInit() {
+      // console.log("tauriInit");
+      if (window.__TAURI__ && window.__TAURI__.invoke) {
+        let is_server_running = await window.__TAURI__
+          .invoke("is_server_running")
+          .catch(() => false);
+        // console.log("is_server_running", is_server_running);
+        let setServerApi = async () => {
+          const serverPort = await window.__TAURI__
+            .invoke("get_server_port")
+            .catch(() => false);
+          // console.log("serverPort", serverPort);
+
+          if (serverPort) {
+            this.$store.commit(
+              "setApi",
+              `http://localhost:${serverPort}/reader3/`
+            );
+          }
+        };
+        if (!is_server_running) {
+          const loading = this.$loading({
+            lock: true,
+            text: "正在启动服务...",
+            spinner: "el-icon-loading",
+            background: "rgba(0, 0, 0, 0.7)"
+          });
+          await window.__TAURI__
+            .invoke("start_server")
+            .catch(err => {
+              this.$message.error(err);
+              this.$nextTick(() => {
+                this.$router.push("/setting");
+              });
+            })
+            .then(setServerApi);
+          loading.close();
+        } else {
+          await setServerApi();
+        }
+      }
+    },
     autoSetTheme(autoTheme) {
       if (autoTheme) {
         if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
@@ -610,21 +657,22 @@ export default {
         }
       );
     },
-    loadTxtTocRules() {
-      return cacheFirstRequest(
-        () => Axios.get("/getTxtTocRules"),
-        "txtTocRules"
-      ).then(
-        res => {
-          const data = res.data.data || [];
-          this.$store.commit("setTxtTocRules", data);
-        },
-        error => {
-          this.$message.error(
-            "加载txt章节规则失败 " + (error && error.toString())
-          );
+    loadTxtTocRules(refresh) {
+      const onSuccess = res => {
+        if (res.data.isSuccess) {
+          this.$store.commit("setTxtTocRules", res.data.data || []);
         }
-      );
+      };
+      return staleWhileRevalidateRequest(
+        () => Axios.get("/getTxtTocRules"),
+        "txtTocRules",
+        refresh,
+        onSuccess
+      ).then(onSuccess, error => {
+        this.$message.error(
+          "加载txt章节规则失败 " + (error && error.toString())
+        );
+      });
     },
     showEditorListener(title, content, callback) {
       this.editorTitle = title;
@@ -660,25 +708,27 @@ export default {
         });
     },
     loadBookGroup(refresh) {
-      return cacheFirstRequest(
+      const onSuccess = res => {
+        if (res.data.isSuccess) {
+          this.$store.commit("setBookGroupList", res.data.data || []);
+        }
+      };
+      return staleWhileRevalidateRequest(
         () => Axios.get(this.api + "/getBookGroups"),
         "bookGroup@" + this.currentUserName,
-        refresh
-      ).then(
-        res => {
-          if (res.data.isSuccess) {
-            this.$store.commit("setBookGroupList", res.data.data || []);
-          }
-        },
-        error => {
-          this.$message.error(
-            "加载分组列表失败 " + (error && error.toString())
-          );
-        }
-      );
+        refresh,
+        onSuccess
+      ).then(onSuccess, error => {
+        this.$message.error("加载分组列表失败 " + (error && error.toString()));
+      });
     },
     loadRssSources(refresh) {
-      return cacheFirstRequest(
+      const onSuccess = res => {
+        if (res.data.isSuccess) {
+          this.$store.commit("setRssSourceList", res.data.data || []);
+        }
+      };
+      return staleWhileRevalidateRequest(
         () =>
           Axios.get(this.api + "/getRssSources", {
             params: {
@@ -687,20 +737,19 @@ export default {
           }),
         "rssSources@" + this.currentUserName,
         refresh
-      ).then(
-        res => {
-          const data = res.data.data || [];
-          this.$store.commit("setRssSourceList", data);
-        },
-        error => {
-          this.$message.error(
-            "加载RSS订阅列表失败 " + (error && error.toString())
-          );
-        }
-      );
+      ).then(onSuccess, error => {
+        this.$message.error(
+          "加载RSS订阅列表失败 " + (error && error.toString())
+        );
+      });
     },
     loadBookSource(refresh) {
-      return cacheFirstRequest(
+      const onSuccess = res => {
+        if (res.data.isSuccess) {
+          this.$store.commit("setBookSourceList", res.data.data || []);
+        }
+      };
+      return staleWhileRevalidateRequest(
         () =>
           Axios.get(this.api + "/getBookSources", {
             params: {
@@ -708,53 +757,41 @@ export default {
             }
           }),
         "bookSourceList@" + this.currentUserName,
-        refresh
-      ).then(
-        res => {
-          if (res.data.isSuccess) {
-            this.$store.commit("setBookSourceList", res.data.data || []);
-          }
-        },
-        error => {
-          this.$message.error(
-            "加载书源列表失败 " + (error && error.toString())
-          );
-        }
-      );
+        refresh,
+        onSuccess
+      ).then(onSuccess, error => {
+        this.$message.error("加载书源列表失败 " + (error && error.toString()));
+      });
     },
     loadReplaceRules(refresh) {
-      return cacheFirstRequest(
+      const onSuccess = res => {
+        if (res.data.isSuccess) {
+          this.$store.commit("setFilterRules", res.data.data || []);
+        }
+      };
+      return staleWhileRevalidateRequest(
         () => Axios.get(this.api + "/getReplaceRules"),
         "replaceRule@" + this.currentUserName,
-        refresh
-      ).then(
-        res => {
-          if (res.data.isSuccess) {
-            this.$store.commit("setFilterRules", res.data.data || []);
-          }
-        },
-        error => {
-          this.$message.error(
-            "加载替换规则失败 " + (error && error.toString())
-          );
-        }
-      );
+        refresh,
+        onSuccess
+      ).then(onSuccess, error => {
+        this.$message.error("加载替换规则失败 " + (error && error.toString()));
+      });
     },
     loadBookmarks(refresh) {
-      return cacheFirstRequest(
+      const onSuccess = res => {
+        if (res.data.isSuccess) {
+          this.$store.commit("setBookmarks", res.data.data || []);
+        }
+      };
+      return staleWhileRevalidateRequest(
         () => Axios.get(this.api + "/getBookmarks"),
         "bookmark@" + this.currentUserName,
-        refresh
-      ).then(
-        res => {
-          if (res.data.isSuccess) {
-            this.$store.commit("setBookmarks", res.data.data || []);
-          }
-        },
-        error => {
-          this.$message.error("加载书签失败 " + (error && error.toString()));
-        }
-      );
+        refresh,
+        onSuccess
+      ).then(onSuccess, error => {
+        this.$message.error("加载书签失败 " + (error && error.toString()));
+      });
     },
     async isInShelf(book, addTip) {
       if (!book || !book.bookUrl || !book.origin) {
@@ -1033,6 +1070,9 @@ export default {
   .el-select .el-tag.el-tag--info {
     background-color: #777;
     border-color: #777;
+    color: #ddd;
+  }
+  .el-form-item__label {
     color: #ddd;
   }
   .el-select-dropdown.is-multiple .el-select-dropdown__item.selected.hover,
